@@ -10,6 +10,47 @@
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
 
+  // ---------------------------------------------------------------------------
+  // Background cloud system
+  // ---------------------------------------------------------------------------
+  // To enhance the cartoon feel, we draw a handful of fluffy clouds that drift
+  // slowly across the sky. Each cloud has a position and drift speed.
+  const clouds = [];
+  function initClouds() {
+    const numClouds = 5;
+    for (let i = 0; i < numClouds; i++) {
+      clouds.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height * 0.4,
+        speed: 0.2 + Math.random() * 0.3,
+      });
+    }
+  }
+  initClouds();
+
+  /**
+   * Draws a rectangle with rounded corners.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} x
+   * @param {number} y
+   * @param {number} w
+   * @param {number} h
+   * @param {number} r Corner radius
+   */
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
   // Game world dimensions (can be wider than the canvas for scrolling)
   const WORLD_WIDTH = 2800; // width in pixels
   const WORLD_HEIGHT = canvas.height;
@@ -175,40 +216,123 @@
       }
     }
     draw(offsetX) {
-      let sprite;
-      if (!this.onGround) {
-        sprite = images.playerJump;
-      } else if (Math.abs(this.velX) > 0.1) {
-          const index = this.walkFrameIndex < 10 ? `0${this.walkFrameIndex}` : `${this.walkFrameIndex}`;
-          sprite = images[`playerWalk${index}`];
-      } else {
-        sprite = images.playerFront;
-      }
-      // Flip sprite when moving left by scaling context
-      ctx.save();
+      // Draw a simple cartoon character using canvas primitives.
       const drawX = this.x - offsetX;
-      if (this.velX < -0.1) {
+      const drawY = this.y;
+      ctx.save();
+      // Flip horizontally if moving left
+      const facingLeft = this.velX < -0.1;
+      if (facingLeft) {
+        ctx.translate(drawX + PLAYER_WIDTH / 2, 0);
         ctx.scale(-1, 1);
-        ctx.drawImage(
-          sprite,
-          0,
-          0,
-          sprite.width,
-          sprite.height,
-          -(drawX + PLAYER_WIDTH),
-          this.y,
-          PLAYER_WIDTH,
-          PLAYER_HEIGHT
-        );
-      } else {
-        ctx.drawImage(
-          sprite,
-          drawX,
-          this.y,
-          PLAYER_WIDTH,
-          PLAYER_HEIGHT
-        );
+        ctx.translate(-(drawX + PLAYER_WIDTH / 2), 0);
       }
+      // Determine animation frame: 0 (stand/walk A), 1 (walk B), 2 (jump)
+      let frame;
+      if (!this.onGround) {
+        frame = 2;
+      } else if (Math.abs(this.velX) > 0.1) {
+        frame = (this.walkFrameIndex % 2);
+      } else {
+        frame = 0;
+      }
+      // Colors
+      const bodyColor = '#4FC3F7';
+      const headColor = '#FFD54F';
+      const limbColor = '#4FC3F7';
+      // Dimensions
+      const bodyW = PLAYER_WIDTH * 0.4;
+      const bodyH = PLAYER_HEIGHT * 0.5;
+      const bodyX = drawX + (PLAYER_WIDTH - bodyW) / 2;
+      const bodyY = drawY + PLAYER_HEIGHT - bodyH;
+      const headRadius = PLAYER_WIDTH * 0.3;
+      const headCX = drawX + PLAYER_WIDTH / 2;
+      const headCY = bodyY - headRadius + 4;
+      // Limb anchors
+      const shoulderY = bodyY + 6;
+      const leftShoulderX = drawX + PLAYER_WIDTH * 0.3;
+      const rightShoulderX = drawX + PLAYER_WIDTH * 0.7;
+      const hipY = bodyY + bodyH;
+      const leftHipX = drawX + PLAYER_WIDTH * 0.4;
+      const rightHipX = drawX + PLAYER_WIDTH * 0.6;
+      // Walk cycle definitions
+      const WALK_CYCLE = [
+        {
+          leftArm: { dx: 8, dy: 12 },
+          rightArm: { dx: -8, dy: -12 },
+          leftLeg: { dx: 8, dy: 12 },
+          rightLeg: { dx: -8, dy: 12 },
+        },
+        {
+          leftArm: { dx: -8, dy: -12 },
+          rightArm: { dx: 8, dy: 12 },
+          leftLeg: { dx: -8, dy: 12 },
+          rightLeg: { dx: 8, dy: 12 },
+        },
+      ];
+      let leftArmDir, rightArmDir, leftLegDir, rightLegDir;
+      if (frame === 2) {
+        leftArmDir = { dx: 0, dy: -16 };
+        rightArmDir = { dx: 0, dy: -16 };
+        leftLegDir = { dx: 0, dy: 16 };
+        rightLegDir = { dx: 0, dy: 16 };
+      } else {
+        const cycle = WALK_CYCLE[frame];
+        leftArmDir = cycle.leftArm;
+        rightArmDir = cycle.rightArm;
+        leftLegDir = cycle.leftLeg;
+        rightLegDir = cycle.rightLeg;
+      }
+      // Draw body
+      ctx.fillStyle = bodyColor;
+      roundRect(ctx, bodyX, bodyY, bodyW, bodyH, 8);
+      ctx.fill();
+      // Draw head
+      ctx.fillStyle = headColor;
+      ctx.beginPath();
+      ctx.arc(headCX, headCY, headRadius, 0, Math.PI * 2);
+      ctx.fill();
+      // Eyes
+      ctx.fillStyle = '#333';
+      const eyeOffsetX = headRadius * 0.4;
+      const eyeOffsetY = headRadius * 0.2;
+      const eyeRadius = headRadius * 0.15;
+      ctx.beginPath();
+      ctx.arc(headCX - eyeOffsetX, headCY - eyeOffsetY, eyeRadius, 0, Math.PI * 2);
+      ctx.arc(headCX + eyeOffsetX, headCY - eyeOffsetY, eyeRadius, 0, Math.PI * 2);
+      ctx.fill();
+      // Mouth (smile)
+      ctx.beginPath();
+      const mouthWidth = headRadius * 0.5;
+      const mouthY = headCY + headRadius * 0.3;
+      ctx.arc(headCX, mouthY, mouthWidth / 2, 0, Math.PI, false);
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // Limbs
+      ctx.strokeStyle = limbColor;
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      // Left arm
+      ctx.beginPath();
+      ctx.moveTo(leftShoulderX, shoulderY);
+      ctx.lineTo(leftShoulderX + leftArmDir.dx, shoulderY + leftArmDir.dy);
+      ctx.stroke();
+      // Right arm
+      ctx.beginPath();
+      ctx.moveTo(rightShoulderX, shoulderY);
+      ctx.lineTo(rightShoulderX + rightArmDir.dx, shoulderY + rightArmDir.dy);
+      ctx.stroke();
+      // Left leg
+      ctx.beginPath();
+      ctx.moveTo(leftHipX, hipY);
+      ctx.lineTo(leftHipX + leftLegDir.dx, hipY + leftLegDir.dy);
+      ctx.stroke();
+      // Right leg
+      ctx.beginPath();
+      ctx.moveTo(rightHipX, hipY);
+      ctx.lineTo(rightHipX + rightLegDir.dx, hipY + rightLegDir.dy);
+      ctx.stroke();
       ctx.restore();
     }
   }
@@ -252,35 +376,85 @@
         }
       }
     });
+
+    // -------------------------------------------------------------------------
+    // Update cloud positions for parallax effect. Clouds drift slowly across
+    // the sky to provide a sense of motion and depth. When a cloud moves off
+    // the right side of the canvas, wrap it back to the left with a new
+    // randomized vertical position.
+    clouds.forEach(cloud => {
+      cloud.x += cloud.speed * (dt / 16);
+      if (cloud.x - 100 > canvas.width) {
+        cloud.x = -150;
+        cloud.y = Math.random() * canvas.height * 0.4;
+      }
+    });
   }
 
   function render() {
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Draw sky background (gradient via CSS already set)
-    // Draw ground tiles
+    // Draw a custom gradient sky and drifting clouds. The gradient provides
+    // a gentle transition from bright blue to pale white across the scene,
+    // while the clouds add depth and whimsy.
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    skyGrad.addColorStop(0, '#a7dfff');
+    skyGrad.addColorStop(1, '#eaf4ff');
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Draw each cloud composed of three overlapping circles with a subtle
+    // outline. Clouds drift horizontally based on their speed values.
+    clouds.forEach(cloud => {
+      const { x, y } = cloud;
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#e0e0e0';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, 20, 0, Math.PI * 2);
+      ctx.arc(x + 25, y + 10, 25, 0, Math.PI * 2);
+      ctx.arc(x + 55, y, 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+    // Draw ground tiles as cartoon blocks
     for (const tile of groundTiles) {
       const drawX = tile.x - cameraX;
       if (drawX + tile.w >= 0 && drawX <= canvas.width) {
-        ctx.drawImage(images.grassMid, drawX, tile.y, tile.w, tile.h);
+        // Dirt base
+        ctx.fillStyle = '#a67c52';
+        ctx.fillRect(drawX, tile.y, tile.w, tile.h);
+        // Grass top
+        const grassH = tile.h * 0.3;
+        ctx.fillStyle = '#8BC34A';
+        ctx.fillRect(drawX, tile.y, tile.w, grassH);
       }
     }
-    // Draw floating platforms (use grassCenter as simple board)
+    // Draw floating platforms as cartoon blocks
     for (const plat of floatingPlatforms) {
       const drawX = plat.x - cameraX;
       if (drawX + plat.w >= 0 && drawX <= canvas.width) {
-        const tileCount = Math.ceil(plat.w / 70);
-        for (let i = 0; i < tileCount; i++) {
-          ctx.drawImage(images.grassCenter, drawX + i * 70, plat.y, 70, plat.h);
-        }
+        ctx.fillStyle = '#a67c52';
+        ctx.fillRect(drawX, plat.y, plat.w, plat.h);
+        const grassH = plat.h * 0.3;
+        ctx.fillStyle = '#8BC34A';
+        ctx.fillRect(drawX, plat.y, plat.w, grassH);
       }
     }
-    // Draw coins
+    // Draw coins as golden circles
     coins.forEach(coin => {
       if (!coin.collected) {
         const drawX = coin.x - cameraX;
         if (drawX + COIN_SIZE >= 0 && drawX <= canvas.width) {
-          ctx.drawImage(images.coin, drawX, coin.y, COIN_SIZE, COIN_SIZE);
+          const radius = COIN_SIZE / 2;
+          const cx = drawX + radius;
+          const cy = coin.y + radius;
+          ctx.fillStyle = '#FFD700';
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#FFC107';
+          ctx.lineWidth = 2;
+          ctx.stroke();
         }
       }
     });
@@ -304,19 +478,9 @@
     if (e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Space') keys.up = false;
   });
 
-  // Load all assets then start game
-  Promise.all(Object.entries(imageFiles).map(([name, src]) => loadImage(name, src)))
-    .then(results => {
-      results.forEach(([name, img]) => {
-        images[name] = img;
-      });
-      // Start the game loop
-      requestAnimationFrame((ts) => {
-        lastTimestamp = ts;
-        gameLoop(ts);
-      });
-    })
-    .catch(err => {
-      console.error('Error loading images', err);
-    });
+  // Start the game loop immediately (no assets to load)
+  requestAnimationFrame((ts) => {
+    lastTimestamp = ts;
+    gameLoop(ts);
+  });
 })();
